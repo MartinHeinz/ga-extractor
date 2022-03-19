@@ -1,4 +1,4 @@
-from .extractor import Extractor
+from .extractor import extractor
 
 if __name__ == "__main__":
-    Extractor.run()
+    extractor()

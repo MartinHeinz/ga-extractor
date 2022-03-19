@@ -1,2 +1,5 @@
 pytest==7.0.1
 pytest-cov==3.0.0
+colorama==0.4.4
+typer==0.4.0
+shellingham==1.4.0
