@@ -59,9 +59,15 @@ def auth():
     """
     Test authentication using generated configuration
     """
+    app_dir = typer.get_app_dir(APP_NAME)
+    config_path: Path = Path(app_dir) / "config.yaml"
+    if not config_path.is_file():
+        typer.echo("Config file doesn't exist yet. Please run 'setup' command first.")
+        return
     try:
-        credentials = service_account.Credentials.from_service_account_file("SOME_PATH.json")  # TODO Read this from config
-        scoped_credentials = credentials.with_scopes(['openid'])
+        with config_path.open() as config:
+            credentials = service_account.Credentials.from_service_account_file(yaml.safe_load(config)["serviceAccountKeyPath"])
+            scoped_credentials = credentials.with_scopes(['openid'])
         with build('oauth2', 'v2', credentials=scoped_credentials) as service:
             user_info = service.userinfo().v2().me().get().execute()
             typer.echo(f"Successfully authenticated with user: {user_info['id']}")
