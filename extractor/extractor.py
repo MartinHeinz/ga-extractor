@@ -84,7 +84,6 @@ def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True))
     """
     # https://developers.google.com/analytics/devguides/reporting/core/v4
 
-    # TODO Pagination: https://developers.google.com/analytics/devguides/reporting/core/v3/reference#startIndex
     # TODO Provide flags for overrides
     app_dir = typer.get_app_dir(APP_NAME)
     config_path: Path = Path(app_dir) / "config.yaml"
@@ -100,6 +99,7 @@ def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True))
         metrics = [{"expression": m} for m in config['metrics'].split(",")]
         body = {"reportRequests": [
                     {
+                        # "pageSize": 2,
                         "viewId": f"{config['table']}",
                         "dateRanges": [
                             {
@@ -109,9 +109,18 @@ def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True))
                         "dimensions": [dimensions],
                         "metrics": [metrics]
                     }]}
+
+        rows = []
         with build('analyticsreporting', 'v4', credentials=scoped_credentials) as service:
             response = service.reports().batchGet(body=body).execute()
-            output_path.write_text(json.dumps(response, indent=4))
+            rows.extend(response["reports"][0]["data"]["rows"])
+
+            while "nextPageToken" in response["reports"][0]:
+                body["reportRequests"][0]["pageToken"] = response["reports"][0]["nextPageToken"]
+                response = service.reports().batchGet(body=body).execute()
+                rows.extend(response["reports"][0]["data"]["rows"])
+
+            output_path.write_text(json.dumps(rows))
         typer.echo(f"Report written to {output_path.absolute()}")
 
 
