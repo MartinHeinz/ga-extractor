@@ -5,3 +5,4 @@ typer==0.4.0
 shellingham==1.4.0
 google-auth-oauthlib==0.5.1
 google-api-python-client==2.41.0
+PyYAML==6.0
