@@ -27,7 +27,6 @@ def setup(metrics: str = typer.Option(..., "--metrics"),
           sampling_level: SamplingLevel = typer.Option(SamplingLevel.DEFAULT, "--sampling-level"),
           start_date: datetime = typer.Option(..., formats=["%Y-%m-%d"]),
           end_date: datetime = typer.Option(..., formats=["%Y-%m-%d"]),
-          path: str = typer.Option("config.yaml", "--path", help="Path for config file that will be generated"),
           dry_run: bool = typer.Option(False, "--dry-run", help="Outputs config to terminal instead of config file")):
     """
     Generate configuration file from arguments
@@ -44,16 +43,14 @@ def setup(metrics: str = typer.Option(..., "--metrics"),
         "endDate": f"{end_date:%Y-%m-%d}",
     }
 
-    my_file = Path(sa_key_path)
-    if not my_file.is_file():
-        typer.echo(f"The service account key file ({sa_key_path}) doesn't exist.")
-        return
-
     output = yaml.dump(config)
     if dry_run:
         typer.echo(output)
     else:
-        with open(path, 'w') as outfile:
+        app_dir = typer.get_app_dir(APP_NAME)
+        config_path: Path = Path(app_dir) / "config.yaml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, 'w') as outfile:
             outfile.write(output)
 
 
