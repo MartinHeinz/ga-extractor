@@ -1,3 +1,5 @@
+import json
+
 import typer
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
@@ -76,17 +78,41 @@ def auth():
 
 
 @extractor.command()
-def extract():
-    ...
-    # Extract data based on the config
-    # Provide flags for overrides
-    # Args: Output File
+def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True)):
+    """
+    # Extracts data based on the config
+    """
     # https://developers.google.com/analytics/devguides/reporting/core/v4
 
+    # TODO Pagination: https://developers.google.com/analytics/devguides/reporting/core/v3/reference#startIndex
+    # TODO Provide flags for overrides
     app_dir = typer.get_app_dir(APP_NAME)
     config_path: Path = Path(app_dir) / "config.yaml"
+    output_path: Path = Path(app_dir) / report
     if not config_path.is_file():
         typer.echo("Config file doesn't exist yet. Please run 'setup' command first.")
+    with config_path.open() as file:
+        config = yaml.safe_load(file)
+        credentials = service_account.Credentials.from_service_account_file(config["serviceAccountKeyPath"])
+        scoped_credentials = credentials.with_scopes(['https://www.googleapis.com/auth/analytics.readonly'])
+
+        dimensions = [{"name": d} for d in config['dimensions'].split(",")]
+        metrics = [{"expression": m} for m in config['metrics'].split(",")]
+        body = {"reportRequests": [
+                    {
+                        "viewId": f"{config['table']}",
+                        "dateRanges": [
+                            {
+                                "startDate": f"{config['startDate']}",
+                                "endDate": f"{config['endDate']}"
+                            }],
+                        "dimensions": [dimensions],
+                        "metrics": [metrics]
+                    }]}
+        with build('analyticsreporting', 'v4', credentials=scoped_credentials) as service:
+            response = service.reports().batchGet(body=body).execute()
+            output_path.write_text(json.dumps(response, indent=4))
+        typer.echo(f"Report written to {output_path.absolute()}")
 
 
 @extractor.command()
