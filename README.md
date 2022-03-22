@@ -23,13 +23,13 @@ Alternatively see <https://martinheinz.dev/blog/62>.
 ## Running
 
 ```bash
-python -m extractor --help
+python -m ga_extractor --help
 ```
 
 Setup:
 
 ```bash
-python -m extractor setup \
+python -m ga_extractor setup \
   --sa-key-path="analytics-api-24102021-4edf0b7270c0.json" \
   --table-id="123456789" \
   --metrics="ga:sessions" \
@@ -39,7 +39,7 @@ python -m extractor setup \
   
 cat ~/.config/ga-extractor/config.yaml  # Optionally, check config
 
-python -m extractor auth  # Test authentication
+python -m ga_extractor auth  # Test authentication
 Successfully authenticated with user: ...
 ```
 
@@ -48,7 +48,7 @@ Value for `--table-id` can be found in GA web console - click on _Admin_ section
 Extract:
 
 ```bash
-python -m extractor extract
+python -m ga_extractor extract
 # Report written to /home/some-user/.config/ga-extractor/report.json
 ```
 
@@ -56,4 +56,14 @@ python -m extractor extract
 
 ```bash
 pytest
+```
+
+## Building Package
+
+```bash
+poetry install
+ga-extractor --help
+
+# Usage: ga-extractor [OPTIONS] COMMAND [ARGS]...
+# ...
 ```

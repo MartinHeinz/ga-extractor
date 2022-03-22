@@ -3,4 +3,4 @@ import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import extractor  # noqa # pylint: disable=unused-import, wrong-import-position
+import ga_extractor  # noqa # pylint: disable=unused-import, wrong-import-position
