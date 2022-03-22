@@ -24,6 +24,10 @@ class OutputFormat(str, Enum):
     csv = "csv"
 
 
+class TargetPlatform(str, Enum):
+    UMAMI = "Umami"
+
+
 @extractor.command()
 def setup(metrics: str = typer.Option(..., "--metrics"),
           dimensions: str = typer.Option(..., "--dimensions"),
@@ -193,8 +197,12 @@ def transform(infile: Optional[Path] = typer.Option("report.json", dir_okay=True
                 typer.echo(f"Report written to {output_path.absolute()}")
 
 
+# TODO
 @extractor.command()
-def _import():
+def migrate(outfile: Optional[Path] = typer.Option(""),
+            to: TargetPlatform = typer.Option(TargetPlatform.UMAMI, "--to"),):
+    """
+    Export necessary data and transform it to format for target environment (Umami, ...)
+    """
     ...
-    # Import data into selected backend (PostgreSQL, Umami, ...)
-    # Args: output to File/Terminal
+
