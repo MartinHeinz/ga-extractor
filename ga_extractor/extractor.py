@@ -22,8 +22,19 @@ class SamplingLevel(str, Enum):
 
 
 class OutputFormat(str, Enum):
-    RAW = "RAW"
+    JSON = "JSON"
+    CSV = "CSV"
     UMAMI = "UMAMI"
+
+    _format_mapping = {
+        JSON: "json",
+        CSV: "csv",
+        UMAMI: "sql",
+    }
+
+    @staticmethod
+    def file_suffix(f):
+        return OutputFormat._format_mapping[f]
 
 
 @extractor.command()
@@ -86,6 +97,7 @@ def auth():
 # TODO include common reports:
 #      Dims:    ga:referralPath, ga:source, ga:medium, ga:browser, ga:operatingSystem, ga:country, ga:language
 #      Metrics: ga:users, ga:sessions, ga:hits, ga:pageviews
+#      Presets: Full (all metrics, all dims for configured range), DailyWalk (same as migrate), Minimal (page views per day)
 @extractor.command()
 def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True)):
     """
@@ -118,35 +130,9 @@ def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True))
                         "dimensions": [dimensions],
                         "metrics": [metrics]
                     }]}
-
-        headers = {}
-        data = {}
         rows = []
         with build('analyticsreporting', 'v4', credentials=scoped_credentials) as service:
             response = service.reports().batchGet(body=body).execute()
-            typer.echo(response)
-            typer.echo()
-            headers = {
-                # e.g. "'ga:browser'+'ga:operatingSystem'"
-                "dimensions": [response["reports"][0]["columnHeader"]["dimensions"]],
-                # e.g. "'Chrome', 'Android'"
-                "metrics": [m["name"] for m in response["reports"][0]["columnHeader"]["metricHeader"]["metricHeaderEntries"]]
-            }
-            data = {
-                "dimensions": [d["dimensions"] for d in response["reports"][0]["data"]["rows"]],
-                "metrics": [v[0]["values"] for v in (m["metrics"] for m in response["reports"][0]["data"]["rows"])]
-            }
-            typer.echo(headers)
-            # {
-            # 'dimensions': [['ga:browser', 'ga:operatingSystem']],
-            # 'metrics': ['ga:sessions', 'ga:bounces']
-            # }
-            typer.echo(data)
-            # {
-            # 'dimensions': [['Android Webview', 'Android'], ['Chrome', 'Android'], ...],
-            # 'metrics': [['1', '1'], ['237', '216'], ...]
-            # }
-
             rows.extend(response["reports"][0]["data"]["rows"])
 
             while "nextPageToken" in response["reports"][0]:
@@ -200,7 +186,7 @@ def transform(infile: Optional[Path] = typer.Option("report.json", dir_okay=True
 
 # TODO
 @extractor.command()
-def migrate(outputFormat: OutputFormat = typer.Option(OutputFormat.RAW, "--format")):
+def migrate(outputFormat: OutputFormat = typer.Option(OutputFormat.JSON, "--format")):
     """
     Export necessary data and transform it to format for target environment (Umami, ...)
     """
@@ -223,7 +209,7 @@ def migrate(outputFormat: OutputFormat = typer.Option(OutputFormat.RAW, "--forma
 
     app_dir = typer.get_app_dir(APP_NAME)
     config_path: Path = Path(app_dir) / "config.yaml"
-    # output_path: Path = Path(app_dir) / f"{uuid.uuid4()}_extract.json"
+    output_path: Path = Path(app_dir) / f"{uuid.uuid4()}_extract.{OutputFormat.file_suffix(outputFormat)}"
     if not config_path.is_file():
         typer.echo("Config file doesn't exist yet. Please run 'setup' command first.")
         typer.Exit(2)
@@ -232,28 +218,42 @@ def migrate(outputFormat: OutputFormat = typer.Option(OutputFormat.RAW, "--forma
         credentials = service_account.Credentials.from_service_account_file(config["serviceAccountKeyPath"])
         scoped_credentials = credentials.with_scopes(['https://www.googleapis.com/auth/analytics.readonly'])
 
-        dimensions = ["ga:pagePath", "ga:browser", "ga:operatingSystem", "ga:deviceCategory", "ga:browserSize", "ga:language", "ga:country"]
-        metrics = ["ga:pageviews", "ga:sessions"]
+        rows = __migrate_extract(scoped_credentials, config['table'], config['startDate'], config['endDate'])
+        data = __migrate_transform(rows)
 
-        start_date = datetime.strptime(config['startDate'], '%Y-%m-%d')
-        end_date = datetime.strptime(config['endDate'], '%Y-%m-%d')
-        date_ranges = [{"startDate": f"{start_date + timedelta(days=d):%Y-%m-%d}", "endDate": f"{start_date + timedelta(days=d):%Y-%m-%d}"} for d in range(((end_date.date() - start_date.date()).days + 1))]
+        output_path.write_text(json.dumps(data))
+        typer.echo(f"Report written to {output_path.absolute()}")
 
-        body = {"reportRequests": [
-            {
-                "viewId": f"{config['table']}",
-                "dimensions": [{"name": d} for d in dimensions],
-                "metrics": [{"expression": m} for m in metrics]
-            }]}
 
-        rows = []
-        for r in date_ranges:
+def __migrate_extract(credentials, table_id, start_date, end_date):
+    dimensions = ["ga:pagePath", "ga:browser", "ga:operatingSystem", "ga:deviceCategory", "ga:browserSize",
+                  "ga:language", "ga:country"]
+    metrics = ["ga:pageviews", "ga:sessions"]
 
-            with build('analyticsreporting', 'v4', credentials=scoped_credentials) as service:
-                body["reportRequests"][0]["dateRanges"] = [r]
-                response = service.reports().batchGet(body=body).execute()
+    start_date = datetime.strptime(start_date, '%Y-%m-%d')
+    end_date = datetime.strptime(end_date, '%Y-%m-%d')
+    date_ranges = [{"startDate": f"{start_date + timedelta(days=d):%Y-%m-%d}",
+                    "endDate": f"{start_date + timedelta(days=d):%Y-%m-%d}"} for d in
+                   range(((end_date.date() - start_date.date()).days + 1))]
 
-                rows.extend(response["reports"][0]["data"]["rows"])
+    body = {"reportRequests": [
+        {
+            "viewId": f"{table_id}",
+            "dimensions": [{"name": d} for d in dimensions],
+            "metrics": [{"expression": m} for m in metrics]
+        }]}
 
-        # output_path.write_text(json.dumps(rows))
-        # typer.echo(f"Report written to {output_path.absolute()}")
+    rows = []
+    for r in date_ranges:
+        with build('analyticsreporting', 'v4', credentials=credentials) as service:
+            body["reportRequests"][0]["dateRanges"] = [r]
+            response = service.reports().batchGet(body=body).execute()
+
+            rows.extend(response["reports"][0]["data"]["rows"])
+
+    return rows
+
+
+def __migrate_transform(rows):
+    # TODO transform rows to given format (SQL, CSV, Raw JSON)
+    ...
