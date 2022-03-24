@@ -21,11 +21,8 @@ class SamplingLevel(str, Enum):
 
 
 class OutputFormat(str, Enum):
-    csv = "csv"
-
-
-class TargetPlatform(str, Enum):
-    UMAMI = "Umami"
+    RAW = "RAW"
+    UMAMI = "UMAMI"
 
 
 @extractor.command()
@@ -85,6 +82,9 @@ def auth():
         typer.echo(f"Authenticated failed with error: '{e}'")
 
 
+# TODO include common reports:
+#      Dims:    ga:referralPath, ga:source, ga:medium, ga:browser, ga:operatingSystem, ga:country, ga:language
+#      Metrics: ga:users, ga:sessions, ga:hits, ga:pageviews
 @extractor.command()
 def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True)):
     """
@@ -161,7 +161,7 @@ def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True))
 @extractor.command()
 def transform(infile: Optional[Path] = typer.Option("report.json", dir_okay=True),
               outfile: Optional[Path] = typer.Option(""),
-              outformat: OutputFormat = typer.Option(OutputFormat.csv, "--output-format"),):
+              outformat: OutputFormat = typer.Option(OutputFormat.RAW, "--output-format"),):
     """
     Transforms extracted data to other formats (e.g. CSV, SQL)
     """
@@ -200,9 +200,29 @@ def transform(infile: Optional[Path] = typer.Option("report.json", dir_okay=True
 # TODO
 @extractor.command()
 def migrate(outfile: Optional[Path] = typer.Option(""),
-            to: TargetPlatform = typer.Option(TargetPlatform.UMAMI, "--to"),):
+            outputFormat: OutputFormat = typer.Option(OutputFormat.RAW, "--format"),):
     """
     Export necessary data and transform it to format for target environment (Umami, ...)
     """
-    ...
+    # For Umami:
+    # INSERT INTO public.website (website_id, website_uuid, user_id, name, domain, share_id, created_at) VALUES (1, '...', 1, 'Blog', 'localhost', '...', '2022-02-22 15:07:31.4+00');
+    # INSERT INTO public.session (session_id, session_uuid, website_id, created_at, hostname, browser, os, device, screen, language, country) VALUES (1, 'fff811c4-8991-5ae3-b4ba-34b75401db54', 1, '2022-02-22 15:14:14.323+00', 'localhost', 'chrome', 'Linux', 'desktop', '1920x1080', 'en', NULL);
+    # INSERT INTO public.session (session_id, session_uuid, website_id, created_at, hostname, browser, os, device, screen, language, country) VALUES (2, 'fd2c990e-11b3-5bbe-9239-dae9556d1161', 1, '2022-02-23 12:03:36.126+00', 'localhost', 'chrome', 'Linux', 'desktop', '1920x1080', 'en', NULL);
+    # INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES (1, 1, 1, '2022-02-22 15:14:14.327+00', '/', '/');
+    # INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES (2, 1, 1, '2022-02-22 15:14:14.328+00', '/', '');
+    # INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES (3, 1, 2, '2022-02-23 12:03:36.135+00', '/blog/53', '');
+    # INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES (4, 1, 2, '2022-02-23 12:04:07.279+00', '/blog/54', '/blog/54');
+    # SELECT pg_catalog.setval('public.pageview_view_id_seq', 4, true);
+    # SELECT pg_catalog.setval('public.session_session_id_seq', 2, true);
+    # SELECT pg_catalog.setval('public.website_website_id_seq', 1, true);
+
+    # RT metrics and dims https://developers.google.com/analytics/devguides/reporting/realtime/dimsmets
+    # RT goes only 30 min into past and does not provide data for individual sessions or page views
+
+    # https://ga-dev-tools.web.app/dimensions-metrics-explorer
+    # Dims: ga:pagePath, (ga:browser, ga:operatingSystem, ga:deviceCategory, ga:browserSize, ga:language, ga:country), Metrics: ga:pageviews, (ga:sessions)
+    # Query data per day (startDate/endDate same, multiple data ranges can be included in single query)
+    # Generate the views + sessions based on the data, ignoring exact visit time
+    # Old sessions won't be preserved, bounce rate and session duration won't be accurate; Views and visitors on day-level granularity with be accurate
+    # TODO Export, Transform, Insert, Test
 
