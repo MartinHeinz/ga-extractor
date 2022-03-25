@@ -302,45 +302,46 @@ def __migrate_transform(rows):
     page_view_id = 1
     session_id = 1
     sql_inserts = []
-    for day, row in rows.items():  # day = date, row = array of dimensions + metrics
-        timestamp = f"{day} 00:00:00.000+00"  # PostgreSQL "timestamp with timezone"
-        page_views, sessions = row[0]["metrics"][0]["values"]
-        sessions = max(sessions, 1)  # in case it's zero
-        if page_views // sessions == 1:  # One page view for each session
-            for i in range(sessions):
-                s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
-                            browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
-                            language=row["dimensions"][5], country=row["dimensions"][6])
-                p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
-                sql_inserts.extend([s, p])
-                session_id += 1
-                page_view_id += 1
-
-        elif page_views % sessions == 0:  # Split equally
-            for i in range(sessions):
-                s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
-                            browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
-                            language=row["dimensions"][5], country=row["dimensions"][6])
-                sql_inserts.append(s)
-                for j in range(page_views // sessions):
+    for day, value in rows.items():  # day = date, row = array of dimensions + metrics
+        for row in value:
+            timestamp = f"{day} 00:00:00.000+00"  # PostgreSQL "timestamp with timezone"
+            page_views, sessions = row[0]["metrics"][0]["values"]
+            sessions = max(sessions, 1)  # in case it's zero
+            if page_views // sessions == 1:  # One page view for each session
+                for i in range(sessions):
+                    s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
+                                browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
+                                language=row["dimensions"][5], country=row["dimensions"][6])
                     p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
-                    sql_inserts.append(p)
+                    sql_inserts.extend([s, p])
+                    session_id += 1
                     page_view_id += 1
-                session_id += 1
-        else:  # One page view for each, rest for the last session
-            for i in range(sessions):
-                s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
-                            browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
-                            language=row["dimensions"][5], country=row["dimensions"][6])
-                p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
-                sql_inserts.extend([s, p])
-                session_id += 1
-                page_view_id += 1
-            last_session_id = session_id - 1
-            for i in range(page_views - sessions):
-                p = PageView(id=page_view_id, website_id=website_id, session_id=last_session_id, created_at=timestamp, url=row["dimensions"][0])
-                page_view_id += 1
-                sql_inserts.append(p)
+
+            elif page_views % sessions == 0:  # Split equally
+                for i in range(sessions):
+                    s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
+                                browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
+                                language=row["dimensions"][5], country=row["dimensions"][6])
+                    sql_inserts.append(s)
+                    for j in range(page_views // sessions):
+                        p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
+                        sql_inserts.append(p)
+                        page_view_id += 1
+                    session_id += 1
+            else:  # One page view for each, rest for the last session
+                for i in range(sessions):
+                    s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
+                                browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
+                                language=row["dimensions"][5], country=row["dimensions"][6])
+                    p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
+                    sql_inserts.extend([s, p])
+                    session_id += 1
+                    page_view_id += 1
+                last_session_id = session_id - 1
+                for i in range(page_views - sessions):
+                    p = PageView(id=page_view_id, website_id=website_id, session_id=last_session_id, created_at=timestamp, url=row["dimensions"][0])
+                    page_view_id += 1
+                    sql_inserts.append(p)
 
     sql_inserts.extend([
         f"SELECT pg_catalog.setval('public.pageview_view_id_seq', {page_view_id}, true);"
