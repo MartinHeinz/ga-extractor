@@ -224,8 +224,7 @@ def _migrate_date_ranges(start_date, end_date):
 
 
 def __migrate_extract(credentials, table_id, date_ranges):
-    dimensions = ["ga:pagePath", "ga:browser", "ga:operatingSystem", "ga:deviceCategory", "ga:browserSize",
-                  "ga:language", "ga:country"]
+    dimensions = ["ga:pagePath", "ga:browser", "ga:operatingSystem", "ga:deviceCategory", "ga:browserSize", "ga:language", "ga:country"]
     metrics = ["ga:pageviews", "ga:sessions"]
 
     body = {"reportRequests": [
@@ -241,7 +240,7 @@ def __migrate_extract(credentials, table_id, date_ranges):
             body["reportRequests"][0]["dateRanges"] = [r]
             response = service.reports().batchGet(body=body).execute()
 
-            rows[date_ranges["startDate"]] = response["reports"][0]["data"]["rows"]
+            rows[r["startDate"]] = response["reports"][0]["data"]["rows"]
 
     return rows
 
