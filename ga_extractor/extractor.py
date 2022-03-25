@@ -1,6 +1,5 @@
 import json
 import uuid
-from collections import namedtuple
 
 import typer
 from googleapiclient.discovery import build
@@ -9,7 +8,7 @@ import yaml
 from datetime import datetime, timedelta
 from pathlib import Path
 from enum import Enum
-from typing import Optional
+from typing import Optional, NamedTuple
 
 extractor = typer.Typer()
 APP_NAME = "ga-extractor"
@@ -186,7 +185,7 @@ def transform(infile: Optional[Path] = typer.Option("report.json", dir_okay=True
 
 # TODO
 @extractor.command()
-def migrate(outputFormat: OutputFormat = typer.Option(OutputFormat.JSON, "--format")):
+def migrate(output_format: OutputFormat = typer.Option(OutputFormat.JSON, "--format")):
     """
     Export necessary data and transform it to format for target environment (Umami, ...)
     """
@@ -197,7 +196,7 @@ def migrate(outputFormat: OutputFormat = typer.Option(OutputFormat.JSON, "--form
 
     app_dir = typer.get_app_dir(APP_NAME)
     config_path: Path = Path(app_dir) / "config.yaml"
-    output_path: Path = Path(app_dir) / f"{uuid.uuid4()}_extract.{OutputFormat.file_suffix(outputFormat)}"
+    output_path: Path = Path(app_dir) / f"{uuid.uuid4()}_extract.{OutputFormat.file_suffix(output_format)}"
     if not config_path.is_file():
         typer.echo("Config file doesn't exist yet. Please run 'setup' command first.")
         typer.Exit(2)
@@ -208,6 +207,7 @@ def migrate(outputFormat: OutputFormat = typer.Option(OutputFormat.JSON, "--form
 
         date_ranges = _migrate_date_ranges(config['startDate'], config['endDate'])
         rows = __migrate_extract(scoped_credentials, config['table'], date_ranges)
+        # TODO test
         data = __migrate_transform(rows)
 
         output_path.write_text(json.dumps(data))
@@ -245,6 +245,38 @@ def __migrate_extract(credentials, table_id, date_ranges):
     return rows
 
 
+class Session(NamedTuple):
+    session_id: int
+    session_uuid: uuid.UUID
+    website_id: int
+    created_at: str
+    hostname: str
+    browser: str
+    os: str
+    device: str
+    screen: str
+    language: str
+    country: str
+
+    def __str__(self):
+        session_insert = (
+            f"INSERT INTO public.session (session_id, session_uuid, website_id, created_at, hostname, browser, os, device, screen, language, country) "
+            f"VALUES ({self.session_id}, {self.session_uuid}, {self.website_id}, {self.created_at}, {self.hostname}, {self.browser}, {self.os}, {self.device}, {self.screen}, {self.language}, {self.country});"
+        )
+        return session_insert
+
+
+class PageView(NamedTuple):
+    id: int
+    website_id: int
+    session_id: int
+    created_at: str
+    url: str
+
+    def __str__(self):
+        return f"INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES ({self.id}, {self.website_id}, {self.session_id}, {self.created_at}, {self.url}, NULL); "
+
+
 def __migrate_transform(rows):
     # TODO transform rows to given format (SQL, CSV, Raw JSON)
     # For Umami:
@@ -255,44 +287,64 @@ def __migrate_transform(rows):
     # INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES (2, 1, 1, '2022-02-22 15:14:14.328+00', '/', '');
     # INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES (3, 1, 2, '2022-02-23 12:03:36.135+00', '/blog/53', '');
     # INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES (4, 1, 2, '2022-02-23 12:04:07.279+00', '/blog/54', '/blog/54');
-    # SELECT pg_catalog.setval('public.pageview_view_id_seq', 4, true);
-    # SELECT pg_catalog.setval('public.session_session_id_seq', 2, true);
-    # SELECT pg_catalog.setval('public.website_website_id_seq', 1, true);
 
     # {'dimensions': ['/blog/29', 'Opera', 'Windows', 'desktop', '2520x1320', 'de-de', 'Germany'], 'metrics': [{'values': ['4', '1']}]}
     # Notes: there can be 0 sessions in the record; there's always more or equal number of views
     #        - treat zero sessions as one
     #        - if sessions is non-zero and page views are > 1, then divide, e.g.:
     #           - 5, 5 - 5 sessions, 1 view each
-    #           - 4, 2 - 2 sessions, 1 view each
+    #           - 4, 2 - 2 sessions, 2 views each
     #           - 5, 3 - 3 sessions, 2x1 view, 1x3 views
+    # TODO Parametrize
     website_id = 1
     hostname = "localhost"
-    PageView = namedtuple('PageView', ["id", "website_id", "session_id", "created_at", "url"])
-    Session = namedtuple('Session', ["session_id", "session_uuid", "website_id", "created_at", "hostname", "browser", "os", "device", "screen", "language", "country"])
+
     page_view_id = 1
-    records = []
-    # TODO Loop through sessions/page views (or multiply records)
-    for i, (k, v) in enumerate(rows.items()):
-        s = Session(session_uuid=uuid.uuid4(),
-                    session_id=i,
-                    website_id=website_id,
-                    created_at=k,
-                    hostname=hostname,
-                    browser=v["dimensions"][1],
-                    os=v["dimensions"][2],
-                    device=v["dimensions"][3],
-                    screen=v["dimensions"][4],
-                    language=v["dimensions"][5],
-                    country=v["dimensions"][6])
-        p = PageView(id=page_view_id, website_id=website_id, session_id=i, created_at=k, url=v["dimensions"][0])
-        page_view_id += 1
-        session_insert = (
-            f"INSERT INTO public.session (session_id, session_uuid, website_id, created_at, hostname, browser, os, device, screen, language, country) "
-            f"VALUES ({s.session_id}, {s.session_uuid}, {s.website_id}, {s.created_at}, {s.hostname}, {s.browser}, {s.os}, {s.device}, {s.screen}, {s.language}, {s.country});"
-        )
-        page_insert = f"INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES ({p.id}, {p.website_id}, {p.session_id}, {p.created_at}, {p.url}, NULL);"
-        records.append(session_insert)
-        records.append(page_insert)
-        typer.echo(session_insert)
-        typer.echo(page_insert)
+    session_id = 1
+    sql_inserts = []
+    for day, row in rows.items():  # day = date, row = array of dimensions + metrics
+        timestamp = f"{day} 00:00:00.000+00"  # PostgreSQL "timestamp with timezone"
+        page_views, sessions = row[0]["metrics"][0]["values"]
+        sessions = max(sessions, 1)  # in case it's zero
+        if page_views // sessions == 1:  # One page view for each session
+            for i in range(sessions):
+                s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
+                            browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
+                            language=row["dimensions"][5], country=row["dimensions"][6])
+                p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
+                sql_inserts.extend([s, p])
+                session_id += 1
+                page_view_id += 1
+
+        elif page_views % sessions == 0:  # Split equally
+            for i in range(sessions):
+                s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
+                            browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
+                            language=row["dimensions"][5], country=row["dimensions"][6])
+                sql_inserts.append(s)
+                for j in range(page_views // sessions):
+                    p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
+                    sql_inserts.append(p)
+                    page_view_id += 1
+                session_id += 1
+        else:  # One page view for each, rest for the last session
+            for i in range(sessions):
+                s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
+                            browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
+                            language=row["dimensions"][5], country=row["dimensions"][6])
+                p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
+                sql_inserts.extend([s, p])
+                session_id += 1
+                page_view_id += 1
+            last_session_id = session_id - 1
+            for i in range(page_views - sessions):
+                p = PageView(id=page_view_id, website_id=website_id, session_id=last_session_id, created_at=timestamp, url=row["dimensions"][0])
+                page_view_id += 1
+                sql_inserts.append(p)
+
+    sql_inserts.extend([
+        f"SELECT pg_catalog.setval('public.pageview_view_id_seq', {page_view_id}, true);"
+        f"SELECT pg_catalog.setval('public.session_session_id_seq', {session_id}, true);"
+    ])
+    return sql_inserts
+
