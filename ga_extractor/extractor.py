@@ -185,14 +185,19 @@ def transform(infile: Optional[Path] = typer.Option("report.json", dir_okay=True
 
 # TODO
 @extractor.command()
-def migrate(output_format: OutputFormat = typer.Option(OutputFormat.JSON, "--format")):
+def migrate(output_format: OutputFormat = typer.Option(OutputFormat.JSON, "--format"),
+            umami_website_id: int = typer.Argument(1, help="Website ID, used if migrating data for Umami Analytics"),
+            umami_hostname: str = typer.Argument("localhost", help="Hostname website being migrated, used if migrating data for Umami Analytics")):
     """
     Export necessary data and transform it to format for target environment (Umami, ...)
+
+    Old sessions won't be preserved because session can span multiple days, but extraction is done on daily level.
+
+    Bounce rate and session duration won't be accurate.
+    Views and visitors on day-level granularity will be accurate.
+    Exact visit time is (hour and minute) is not preserved.
     """
-    # Query data per day (startDate/endDate same, multiple data ranges can be included in single query)
-    # Generate the views + sessions based on the data, ignoring exact visit time
-    # Old sessions won't be preserved, bounce rate and session duration won't be accurate; Views and visitors on day-level granularity with be accurate
-    # TODO Transform, Insert, Test
+    # TODO Insert, Test
 
     app_dir = typer.get_app_dir(APP_NAME)
     config_path: Path = Path(app_dir) / "config.yaml"
@@ -207,7 +212,13 @@ def migrate(output_format: OutputFormat = typer.Option(OutputFormat.JSON, "--for
 
         date_ranges = _migrate_date_ranges(config['startDate'], config['endDate'])
         rows = __migrate_extract(scoped_credentials, config['table'], date_ranges)
-        data = __migrate_transform(rows)
+
+        if output_format == OutputFormat.UMAMI:
+            data = __migrate_transform_umami(rows, umami_website_id, umami_hostname)
+        elif output_format == OutputFormat.JSON:
+            data = rows
+        elif output_format == OutputFormat.CSV:
+            raise NotImplementedError  # TODO
 
         output_path.write_text(json.dumps(data))
         typer.echo(f"Report written to {output_path.absolute()}")
@@ -277,27 +288,15 @@ class PageView(NamedTuple):
         return f"INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES ({self.id}, {self.website_id}, {self.session_id}, '{self.created_at}', '{self.url}', '{self.referral_path}');"
 
 
-def __migrate_transform(rows):
-    # TODO transform rows to given format (SQL, CSV, Raw JSON)
-    # For Umami:
-    # INSERT INTO public.website (website_id, website_uuid, user_id, name, domain, share_id, created_at) VALUES (1, '...', 1, 'Blog', 'localhost', '...', '2022-02-22 15:07:31.4+00');
-    # INSERT INTO public.session (session_id, session_uuid, website_id, created_at, hostname, browser, os, device, screen, language, country) VALUES (1, 'fff811c4-8991-5ae3-b4ba-34b75401db54', 1, '2022-02-22 15:14:14.323+00', 'localhost', 'chrome', 'Linux', 'desktop', '1920x1080', 'en', NULL);
-    # INSERT INTO public.session (session_id, session_uuid, website_id, created_at, hostname, browser, os, device, screen, language, country) VALUES (2, 'fd2c990e-11b3-5bbe-9239-dae9556d1161', 1, '2022-02-23 12:03:36.126+00', 'localhost', 'chrome', 'Linux', 'desktop', '1920x1080', 'en', NULL);
-    # INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES (1, 1, 1, '2022-02-22 15:14:14.327+00', '/', '/');
-    # INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES (2, 1, 1, '2022-02-22 15:14:14.328+00', '/', '');
-    # INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES (3, 1, 2, '2022-02-23 12:03:36.135+00', '/blog/53', '');
-    # INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES (4, 1, 2, '2022-02-23 12:04:07.279+00', '/blog/54', '/blog/54');
+def __migrate_transform_umami(rows,  website_id, hostname):
 
-    # {'dimensions': ['/blog/29', 'Opera', 'Windows', 'desktop', '2520x1320', 'de-de', 'Germany'], 'metrics': [{'values': ['4', '1']}]}
+    # {'dimensions': ['/', 'Chrome', 'Windows', 'desktop', '1350x610', 'en-us', 'India', '(direct)'], 'metrics': [{'values': ['1', '1']}]}
     # Notes: there can be 0 sessions in the record; there's always more or equal number of views
     #        - treat zero sessions as one
     #        - if sessions is non-zero and page views are > 1, then divide, e.g.:
     #           - 5, 5 - 5 sessions, 1 view each
     #           - 4, 2 - 2 sessions, 2 views each
     #           - 5, 3 - 3 sessions, 2x1 view, 1x3 views
-    # TODO Parametrize
-    website_id = 1
-    hostname = "localhost"
 
     page_view_id = 1
     session_id = 1

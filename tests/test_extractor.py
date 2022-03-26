@@ -1,11 +1,11 @@
 from typer.testing import CliRunner
 
-from ga_extractor.extractor import __migrate_transform
+from ga_extractor.extractor import __migrate_transform_umami
 
 runner = CliRunner()
 
 
-def test__migrate_transform():
+def test__migrate_transform_umami():
     rows = {'2022-03-19': [
         {'dimensions': ['/blog/69', 'Chrome', 'Linux', 'desktop', '1850x950', 'es-us', 'Venezuela', 't.co/'], 'metrics': [{'values': ['5', '5']}]},
         {'dimensions': ['/', 'Chrome', 'Android', 'mobile', '420x800', 'en-us', 'Malaysia', 'google'], 'metrics': [{'values': ['1', '0']}]},
@@ -13,7 +13,7 @@ def test__migrate_transform():
         {'dimensions': ['/blog/68', 'Firefox', 'Android', 'mobile', '410x780', 'es-us', 'Colombia', 'betterprogramming.pub/building-github-apps-with-golang-43b27f3e9621'], 'metrics': [{'values': ['3', '2']}]},
     ]}
 
-    sql = __migrate_transform(rows)
+    sql = __migrate_transform_umami(rows, 1, "localhost")
     print(sql)
     assert len(sql) == 25
     assert sum(1 if row.startswith("INSERT INTO public.session") else 0 for row in sql) == 10  # Sessions
