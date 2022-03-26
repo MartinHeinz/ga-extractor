@@ -14,9 +14,7 @@ def test__migrate_transform_umami():
     ]}
 
     sql = __migrate_transform_umami(rows, 1, "localhost")
-    print(sql)
     assert len(sql) == 25
     assert sum(1 if row.startswith("INSERT INTO public.session") else 0 for row in sql) == 10  # Sessions
     assert sum(1 if row.startswith("INSERT INTO public.pageview") else 0 for row in sql) == 13  # Sessions
     assert sum(1 if "/blog/68" in row else 0 for row in sql) == 3  # Sessions
-    assert False
