@@ -2,6 +2,7 @@ import json
 import uuid
 
 import typer
+import validators
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import yaml
@@ -197,7 +198,6 @@ def migrate(output_format: OutputFormat = typer.Option(OutputFormat.JSON, "--for
     Views and visitors on day-level granularity will be accurate.
     Exact visit time is (hour and minute) is not preserved.
     """
-    # TODO Insert, Test
 
     app_dir = typer.get_app_dir(APP_NAME)
     config_path: Path = Path(app_dir) / "config.yaml"
@@ -215,12 +215,17 @@ def migrate(output_format: OutputFormat = typer.Option(OutputFormat.JSON, "--for
 
         if output_format == OutputFormat.UMAMI:
             data = __migrate_transform_umami(rows, umami_website_id, umami_hostname)
+            with output_path.open(mode="w") as f:
+                for insert in data:
+                    f.write(f"{insert}\n")
         elif output_format == OutputFormat.JSON:
-            data = rows
+            output_path.write_text(json.dumps(rows))
         elif output_format == OutputFormat.CSV:
             data = __migrate_transform_csv(rows)
+            with output_path.open(mode="w") as f:
+                for row in data:
+                    f.write(f"{row}\n")
 
-        output_path.write_text(json.dumps(data))
         typer.echo(f"Report written to {output_path.absolute()}")
 
 
@@ -266,12 +271,11 @@ class Session(NamedTuple):
     device: str
     screen: str
     language: str
-    country: str
 
     def sql(self):
         session_insert = (
             f"INSERT INTO public.session (session_id, session_uuid, website_id, created_at, hostname, browser, os, device, screen, language, country) "
-            f"VALUES ({self.session_id}, '{self.session_uuid}', {self.website_id}, '{self.created_at}', '{self.hostname}', '{self.browser}', '{self.os}', '{self.device}', '{self.screen}', '{self.language}', '{self.country}');"
+            f"VALUES ({self.session_id}, '{self.session_uuid}', {self.website_id}, '{self.created_at}', '{self.hostname}', '{self.browser[:20]}', '{self.os}', '{self.device}', '{self.screen}', '{self.language}', NULL);"
         )
         return session_insert
 
@@ -304,18 +308,20 @@ def __migrate_transform_umami(rows,  website_id, hostname):
     for day, value in rows.items():
         for row in value:
             timestamp = f"{day} 00:00:00.000+00"  # PostgreSQL-style "timestamp with timezone"
-            referrer = row["dimensions"][7]
-            if referrer == "(direct)":
+            referrer = f"https://{row['dimensions'][7]}"
+            if not validators.url(referrer):
                 referrer = ""
             elif referrer == "google":
-                referrer = "google.com"
+                referrer = "https://google.com"
+
+            language = row["dimensions"][5][:2]
             page_views, sessions = map(int, row["metrics"][0]["values"])
             sessions = max(sessions, 1)  # in case it's zero
             if page_views == sessions:  # One page view for each session
                 for i in range(sessions):
                     s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
                                 browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
-                                language=row["dimensions"][5], country=row["dimensions"][6])
+                                language=language)
                     p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0], referral_path=referrer)
                     sql_inserts.extend([s.sql(), p.sql()])
                     session_id += 1
@@ -325,7 +331,7 @@ def __migrate_transform_umami(rows,  website_id, hostname):
                 for i in range(sessions):
                     s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
                                 browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
-                                language=row["dimensions"][5], country=row["dimensions"][6])
+                                language=language)
                     sql_inserts.append(s.sql())
                     for j in range(page_views // sessions):
                         p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0], referral_path=referrer)
@@ -336,7 +342,7 @@ def __migrate_transform_umami(rows,  website_id, hostname):
                 for i in range(sessions):
                     s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
                                 browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
-                                language=row["dimensions"][5], country=row["dimensions"][6])
+                                language=language)
                     p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0], referral_path=referrer)
                     sql_inserts.extend([s.sql(), p.sql()])
                     session_id += 1

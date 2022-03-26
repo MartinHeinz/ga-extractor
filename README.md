@@ -52,6 +52,23 @@ python -m ga_extractor extract
 # Report written to /home/some-user/.config/ga-extractor/report.json
 ```
 
+Migrate:
+
+```bash
+python -m ga_extractor migrate --format=UMAMI
+# Report written to /home/user/.config/ga-extractor/cee9e1d0-3b87-4052-a295-1b7224c5ba78_extract.sql
+
+cat cee9e1d0-3b87-4052-a295-1b7224c5ba78_extract.sql | docker exec -i db psql -Upostgres -a blog
+```
+
+This should be run against clean database, consider running following if possible
+
+```sql
+-- THIS WILL WIPE YOUR DATA
+TRUNCATE public.pageview RESTART IDENTITY CASCADE;
+TRUNCATE public.session RESTART IDENTITY CASCADE;
+```
+
 ## Testing
 
 ```bash
