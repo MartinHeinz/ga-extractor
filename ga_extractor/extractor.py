@@ -207,7 +207,6 @@ def migrate(output_format: OutputFormat = typer.Option(OutputFormat.JSON, "--for
 
         date_ranges = _migrate_date_ranges(config['startDate'], config['endDate'])
         rows = __migrate_extract(scoped_credentials, config['table'], date_ranges)
-        # TODO test
         data = __migrate_transform(rows)
 
         output_path.write_text(json.dumps(data))
@@ -224,7 +223,7 @@ def _migrate_date_ranges(start_date, end_date):
 
 
 def __migrate_extract(credentials, table_id, date_ranges):
-    dimensions = ["ga:pagePath", "ga:browser", "ga:operatingSystem", "ga:deviceCategory", "ga:browserSize", "ga:language", "ga:country"]
+    dimensions = ["ga:pagePath", "ga:browser", "ga:operatingSystem", "ga:deviceCategory", "ga:browserSize", "ga:language", "ga:country", "ga:fullReferrer"]
     metrics = ["ga:pageviews", "ga:sessions"]
 
     body = {"reportRequests": [
@@ -272,13 +271,13 @@ class PageView(NamedTuple):
     session_id: int
     created_at: str
     url: str
+    referral_path: str
 
     def __str__(self):
-        return f"INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES ({self.id}, {self.website_id}, {self.session_id}, '{self.created_at}', '{self.url}', NULL);"
+        return f"INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES ({self.id}, {self.website_id}, {self.session_id}, '{self.created_at}', '{self.url}', '{self.referral_path}');"
 
 
 def __migrate_transform(rows):
-    # TODO add ga:referralPath to pageview
     # TODO transform rows to given format (SQL, CSV, Raw JSON)
     # For Umami:
     # INSERT INTO public.website (website_id, website_uuid, user_id, name, domain, share_id, created_at) VALUES (1, '...', 1, 'Blog', 'localhost', '...', '2022-02-22 15:07:31.4+00');
@@ -306,6 +305,11 @@ def __migrate_transform(rows):
     for day, value in rows.items():  # day = date, row = array of dimensions + metrics
         for row in value:
             timestamp = f"{day} 00:00:00.000+00"  # PostgreSQL "timestamp with timezone"
+            referrer = row["dimensions"][7]
+            if referrer == "(direct)":
+                referrer = ""
+            elif referrer == "google":
+                referrer = "google.com"
             page_views, sessions = map(int, row["metrics"][0]["values"])
             sessions = max(sessions, 1)  # in case it's zero
             if page_views == sessions:  # One page view for each session
@@ -313,7 +317,7 @@ def __migrate_transform(rows):
                     s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
                                 browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
                                 language=row["dimensions"][5], country=row["dimensions"][6])
-                    p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
+                    p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0], referral_path=referrer)
                     sql_inserts.extend([str(s), str(p)])
                     session_id += 1
                     page_view_id += 1
@@ -325,7 +329,7 @@ def __migrate_transform(rows):
                                 language=row["dimensions"][5], country=row["dimensions"][6])
                     sql_inserts.append(str(s))
                     for j in range(page_views // sessions):
-                        p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
+                        p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0], referral_path=referrer)
                         sql_inserts.append(str(p))
                         page_view_id += 1
                     session_id += 1
@@ -334,13 +338,13 @@ def __migrate_transform(rows):
                     s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
                                 browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
                                 language=row["dimensions"][5], country=row["dimensions"][6])
-                    p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
+                    p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0], referral_path=referrer)
                     sql_inserts.extend([str(s), str(p)])
                     session_id += 1
                     page_view_id += 1
                 last_session_id = session_id - 1
                 for i in range(page_views - sessions):
-                    p = PageView(id=page_view_id, website_id=website_id, session_id=last_session_id, created_at=timestamp, url=row["dimensions"][0])
+                    p = PageView(id=page_view_id, website_id=website_id, session_id=last_session_id, created_at=timestamp, url=row["dimensions"][0], referral_path=referrer)
                     page_view_id += 1
                     sql_inserts.append(str(p))
 
