@@ -218,7 +218,7 @@ def migrate(output_format: OutputFormat = typer.Option(OutputFormat.JSON, "--for
         elif output_format == OutputFormat.JSON:
             data = rows
         elif output_format == OutputFormat.CSV:
-            raise NotImplementedError  # TODO
+            data = __migrate_transform_csv(rows)
 
         output_path.write_text(json.dumps(data))
         typer.echo(f"Report written to {output_path.absolute()}")
@@ -268,7 +268,7 @@ class Session(NamedTuple):
     language: str
     country: str
 
-    def __str__(self):
+    def sql(self):
         session_insert = (
             f"INSERT INTO public.session (session_id, session_uuid, website_id, created_at, hostname, browser, os, device, screen, language, country) "
             f"VALUES ({self.session_id}, '{self.session_uuid}', {self.website_id}, '{self.created_at}', '{self.hostname}', '{self.browser}', '{self.os}', '{self.device}', '{self.screen}', '{self.language}', '{self.country}');"
@@ -284,7 +284,7 @@ class PageView(NamedTuple):
     url: str
     referral_path: str
 
-    def __str__(self):
+    def sql(self):
         return f"INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES ({self.id}, {self.website_id}, {self.session_id}, '{self.created_at}', '{self.url}', '{self.referral_path}');"
 
 
@@ -301,9 +301,9 @@ def __migrate_transform_umami(rows,  website_id, hostname):
     page_view_id = 1
     session_id = 1
     sql_inserts = []
-    for day, value in rows.items():  # day = date, row = array of dimensions + metrics
+    for day, value in rows.items():
         for row in value:
-            timestamp = f"{day} 00:00:00.000+00"  # PostgreSQL "timestamp with timezone"
+            timestamp = f"{day} 00:00:00.000+00"  # PostgreSQL-style "timestamp with timezone"
             referrer = row["dimensions"][7]
             if referrer == "(direct)":
                 referrer = ""
@@ -317,7 +317,7 @@ def __migrate_transform_umami(rows,  website_id, hostname):
                                 browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
                                 language=row["dimensions"][5], country=row["dimensions"][6])
                     p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0], referral_path=referrer)
-                    sql_inserts.extend([str(s), str(p)])
+                    sql_inserts.extend([s.sql(), p.sql()])
                     session_id += 1
                     page_view_id += 1
 
@@ -326,10 +326,10 @@ def __migrate_transform_umami(rows,  website_id, hostname):
                     s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
                                 browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
                                 language=row["dimensions"][5], country=row["dimensions"][6])
-                    sql_inserts.append(str(s))
+                    sql_inserts.append(s.sql())
                     for j in range(page_views // sessions):
                         p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0], referral_path=referrer)
-                        sql_inserts.append(str(p))
+                        sql_inserts.append(p.sql())
                         page_view_id += 1
                     session_id += 1
             else:  # One page view for each, rest for the last session
@@ -338,15 +338,14 @@ def __migrate_transform_umami(rows,  website_id, hostname):
                                 browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
                                 language=row["dimensions"][5], country=row["dimensions"][6])
                     p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0], referral_path=referrer)
-                    sql_inserts.extend([str(s), str(p)])
+                    sql_inserts.extend([s.sql(), p.sql()])
                     session_id += 1
                     page_view_id += 1
                 last_session_id = session_id - 1
                 for i in range(page_views - sessions):
                     p = PageView(id=page_view_id, website_id=website_id, session_id=last_session_id, created_at=timestamp, url=row["dimensions"][0], referral_path=referrer)
                     page_view_id += 1
-                    sql_inserts.append(str(p))
-
+                    sql_inserts.append(p.sql())
 
     sql_inserts.extend([
         f"SELECT pg_catalog.setval('public.pageview_view_id_seq', {page_view_id}, true);",
@@ -354,3 +353,41 @@ def __migrate_transform_umami(rows,  website_id, hostname):
     ])
     return sql_inserts
 
+
+class CSVRow(NamedTuple):
+    path: str
+    browser: str
+    os: str
+    device: str
+    screen: str
+    language: str
+    country: str
+    referral_path: str
+    count: str
+    date: datetime.date
+
+    @staticmethod
+    def header():
+        return f"path,browser,os,device,screen,language,country,referral_path,count,date"
+
+    def csv(self):
+        return f"{self.path},{self.browser},{self.os},{self.device},{self.screen},{self.language},{self.country},{self.referral_path},{self.count},{self.date}"
+
+
+def __migrate_transform_csv(rows):
+    csv_rows = [CSVRow.header()]
+    for day, value in rows.items():
+        for row in value:
+            page_views, _ = map(int, row["metrics"][0]["values"])
+            row = CSVRow(path=row["dimensions"][0],
+                         browser=row["dimensions"][1],
+                         os=row["dimensions"][2],
+                         device=row["dimensions"][3],
+                         screen=row["dimensions"][4],
+                         language=row["dimensions"][5],
+                         country=row["dimensions"][6],
+                         referral_path=row["dimensions"][7],
+                         count=page_views,
+                         date=day)
+            csv_rows.append(row.csv())
+    return csv_rows
