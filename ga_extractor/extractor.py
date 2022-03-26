@@ -261,7 +261,7 @@ class Session(NamedTuple):
     def __str__(self):
         session_insert = (
             f"INSERT INTO public.session (session_id, session_uuid, website_id, created_at, hostname, browser, os, device, screen, language, country) "
-            f"VALUES ({self.session_id}, {self.session_uuid}, {self.website_id}, {self.created_at}, {self.hostname}, {self.browser}, {self.os}, {self.device}, {self.screen}, {self.language}, {self.country});"
+            f"VALUES ({self.session_id}, '{self.session_uuid}', {self.website_id}, '{self.created_at}', '{self.hostname}', '{self.browser}', '{self.os}', '{self.device}', '{self.screen}', '{self.language}', '{self.country}');"
         )
         return session_insert
 
@@ -274,10 +274,11 @@ class PageView(NamedTuple):
     url: str
 
     def __str__(self):
-        return f"INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES ({self.id}, {self.website_id}, {self.session_id}, {self.created_at}, {self.url}, NULL); "
+        return f"INSERT INTO public.pageview (view_id, website_id, session_id, created_at, url, referrer) VALUES ({self.id}, {self.website_id}, {self.session_id}, '{self.created_at}', '{self.url}', NULL);"
 
 
 def __migrate_transform(rows):
+    # TODO add ga:referralPath to pageview
     # TODO transform rows to given format (SQL, CSV, Raw JSON)
     # For Umami:
     # INSERT INTO public.website (website_id, website_uuid, user_id, name, domain, share_id, created_at) VALUES (1, '...', 1, 'Blog', 'localhost', '...', '2022-02-22 15:07:31.4+00');
@@ -305,15 +306,15 @@ def __migrate_transform(rows):
     for day, value in rows.items():  # day = date, row = array of dimensions + metrics
         for row in value:
             timestamp = f"{day} 00:00:00.000+00"  # PostgreSQL "timestamp with timezone"
-            page_views, sessions = row[0]["metrics"][0]["values"]
+            page_views, sessions = map(int, row["metrics"][0]["values"])
             sessions = max(sessions, 1)  # in case it's zero
-            if page_views // sessions == 1:  # One page view for each session
+            if page_views == sessions:  # One page view for each session
                 for i in range(sessions):
                     s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
                                 browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
                                 language=row["dimensions"][5], country=row["dimensions"][6])
                     p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
-                    sql_inserts.extend([s, p])
+                    sql_inserts.extend([str(s), str(p)])
                     session_id += 1
                     page_view_id += 1
 
@@ -322,10 +323,10 @@ def __migrate_transform(rows):
                     s = Session(session_uuid=uuid.uuid4(), session_id=session_id, website_id=website_id, created_at=timestamp, hostname=hostname,
                                 browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
                                 language=row["dimensions"][5], country=row["dimensions"][6])
-                    sql_inserts.append(s)
+                    sql_inserts.append(str(s))
                     for j in range(page_views // sessions):
                         p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
-                        sql_inserts.append(p)
+                        sql_inserts.append(str(p))
                         page_view_id += 1
                     session_id += 1
             else:  # One page view for each, rest for the last session
@@ -334,17 +335,18 @@ def __migrate_transform(rows):
                                 browser=row["dimensions"][1], os=row["dimensions"][2], device=row["dimensions"][3], screen=row["dimensions"][4],
                                 language=row["dimensions"][5], country=row["dimensions"][6])
                     p = PageView(id=page_view_id, website_id=website_id, session_id=session_id, created_at=timestamp, url=row["dimensions"][0])
-                    sql_inserts.extend([s, p])
+                    sql_inserts.extend([str(s), str(p)])
                     session_id += 1
                     page_view_id += 1
                 last_session_id = session_id - 1
                 for i in range(page_views - sessions):
                     p = PageView(id=page_view_id, website_id=website_id, session_id=last_session_id, created_at=timestamp, url=row["dimensions"][0])
                     page_view_id += 1
-                    sql_inserts.append(p)
+                    sql_inserts.append(str(p))
+
 
     sql_inserts.extend([
-        f"SELECT pg_catalog.setval('public.pageview_view_id_seq', {page_view_id}, true);"
+        f"SELECT pg_catalog.setval('public.pageview_view_id_seq', {page_view_id}, true);",
         f"SELECT pg_catalog.setval('public.session_session_id_seq', {session_id}, true);"
     ])
     return sql_inserts
