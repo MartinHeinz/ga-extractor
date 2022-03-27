@@ -67,7 +67,6 @@ def setup(metrics: str = typer.Option(None, "--metrics"),
           dimensions: str = typer.Option(None, "--dimensions"),
           sa_key_path: str = typer.Option(..., "--sa-key-path"),
           table_id: int = typer.Option(..., "--table-id"),
-          filters: Optional[str] = typer.Option(None, "--filters"),
           sampling_level: SamplingLevel = typer.Option(SamplingLevel.DEFAULT, "--sampling-level"),
           preset: Preset = typer.Option(Preset.NONE, "--preset",
                                         help="Use metrics and dimension preset (can't be specified with '--dimensions' or '--metrics')"),
@@ -90,7 +89,6 @@ def setup(metrics: str = typer.Option(None, "--metrics"),
         "table": table_id,
         "metrics": "" if not metrics else metrics.split(","),
         "dimensions": "" if not dimensions else dimensions.split(","),
-        "filters": "" if not filters else filters,
         "samplingLevel": sampling_level.value,
         "startDate": f"{start_date:%Y-%m-%d}",
         "endDate": f"{end_date:%Y-%m-%d}",
@@ -132,13 +130,12 @@ def auth():
         typer.echo(f"Authenticated failed with error: '{e}'")
 
 
-# TODO Include params for filters
 @extractor.command()
 def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True)):
     """
     Extracts data based on the config
     """
-    # https://developers.google.com/analytics/devguides/reporting/core/v4
+    # https://developers.google.com/analytics/devguides/reporting/core/v4/rest/v4/reports/batchGet
 
     app_dir = typer.get_app_dir(APP_NAME)
     config_path: Path = Path(app_dir) / "config.yaml"
@@ -155,7 +152,7 @@ def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True))
         metrics = [{"expression": m} for m in config['metrics']]
         body = {"reportRequests": [
                     {
-                        # "pageSize": 2,
+                        # "pageSize": 2,  # Use this to test paging
                         "viewId": f"{config['table']}",
                         "dateRanges": [
                             {
@@ -171,7 +168,7 @@ def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True))
             response = service.reports().batchGet(body=body).execute()
             rows.extend(response["reports"][0]["data"]["rows"])
 
-            while "nextPageToken" in response["reports"][0]:
+            while "nextPageToken" in response["reports"][0]:  # Paging...
                 body["reportRequests"][0]["pageToken"] = response["reports"][0]["nextPageToken"]
                 response = service.reports().batchGet(body=body).execute()
                 rows.extend(response["reports"][0]["data"]["rows"])
