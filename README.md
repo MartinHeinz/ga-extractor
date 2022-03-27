@@ -43,7 +43,7 @@ python -m ga_extractor auth  # Test authentication
 Successfully authenticated with user: ...
 ```
 
-Value for `--table-id` can be found in GA web console - click on _Admin_ section, _View Settings_ and see _View ID_ field 
+Value for `--table-id` can be found in GA web console - Click on _Admin_ section, _View Settings_ and see _View ID_ field 
 
 Extract:
 
@@ -68,6 +68,13 @@ This should be run against clean database, consider running following if possibl
 TRUNCATE public.pageview RESTART IDENTITY CASCADE;
 TRUNCATE public.session RESTART IDENTITY CASCADE;
 ```
+
+You can verify the data is correct in Umami web console and GA web console:
+
+[Umami extract](./assets/umami-migration.png)
+[GA Pageviews](./assets/ga-pageviews.png)
+
+_Note: Some data in GA and Umami web console might be little off, because GA displays many metrics based on sessions (e.g. Sessions by device), but data is extracted/migrated based on page views. You can however confirm that percentage breakdown of browser or OS usage does match._
 
 ## Testing
 
