@@ -1,6 +1,6 @@
 from typer.testing import CliRunner
 
-from ga_extractor.extractor import __migrate_transform_umami, __migrate_transform_csv
+from ga_extractor.extractor import __migrate_transform_umami, __migrate_transform_csv, __migrate_date_ranges
 
 runner = CliRunner()
 
@@ -23,3 +23,13 @@ def test__migrate_transform_csv(sample_extract):
     csv_rows = __migrate_transform_csv(sample_extract)
 
     assert csv_rows == expected
+
+
+def test__migrate_date_ranges():
+    expected = [{'endDate': '2022-03-17', 'startDate': '2022-03-17'},
+                {'endDate': '2022-03-18', 'startDate': '2022-03-18'},
+                {'endDate': '2022-03-19', 'startDate': '2022-03-19'}]
+
+    date_ranges = __migrate_date_ranges("2022-03-17", "2022-03-19")
+
+    assert date_ranges == expected

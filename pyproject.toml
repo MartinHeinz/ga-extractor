@@ -14,6 +14,7 @@ google-auth-oauthlib = "^0.5.1"
 google-api-python-client = "^2.41.0"
 PyYAML = "^6.0"
 validators = "^0.18.2"
+coverage = {extras = ["toml"], version = "^6.3.2"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.1"
@@ -25,3 +26,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 ga-extractor = "extractor.extractor:extractor"
+
+[tool.coverage.run]
+source = ['ga_extractor']
+
+[tool.coverage.report]
+show_missing = true

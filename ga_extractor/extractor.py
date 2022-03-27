@@ -210,7 +210,7 @@ def migrate(output_format: OutputFormat = typer.Option(OutputFormat.JSON, "--for
         credentials = service_account.Credentials.from_service_account_file(config["serviceAccountKeyPath"])
         scoped_credentials = credentials.with_scopes(['https://www.googleapis.com/auth/analytics.readonly'])
 
-        date_ranges = _migrate_date_ranges(config['startDate'], config['endDate'])
+        date_ranges = __migrate_date_ranges(config['startDate'], config['endDate'])
         rows = __migrate_extract(scoped_credentials, config['table'], date_ranges)
 
         if output_format == OutputFormat.UMAMI:
@@ -229,7 +229,7 @@ def migrate(output_format: OutputFormat = typer.Option(OutputFormat.JSON, "--for
         typer.echo(f"Report written to {output_path.absolute()}")
 
 
-def _migrate_date_ranges(start_date, end_date):
+def __migrate_date_ranges(start_date, end_date):
     start_date = datetime.strptime(start_date, '%Y-%m-%d')
     end_date = datetime.strptime(end_date, '%Y-%m-%d')
     date_ranges = [{"startDate": f"{start_date + timedelta(days=d):%Y-%m-%d}",
@@ -294,7 +294,9 @@ class PageView(NamedTuple):
 
 def __migrate_transform_umami(rows,  website_id, hostname):
 
+    # Sample row:
     # {'dimensions': ['/', 'Chrome', 'Windows', 'desktop', '1350x610', 'en-us', 'India', '(direct)'], 'metrics': [{'values': ['1', '1']}]}
+    #
     # Notes: there can be 0 sessions in the record; there's always more or equal number of views
     #        - treat zero sessions as one
     #        - if sessions is non-zero and page views are > 1, then divide, e.g.:
