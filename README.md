@@ -71,8 +71,8 @@ TRUNCATE public.session RESTART IDENTITY CASCADE;
 
 You can verify the data is correct in Umami web console and GA web console:
 
-[Umami extract](./assets/umami-migration.png)
-[GA Pageviews](./assets/ga-pageviews.png)
+- [Umami extract](./assets/umami-migration.png)
+- [GA Pageviews](./assets/ga-pageviews.png)
 
 _Note: Some data in GA and Umami web console might be little off, because GA displays many metrics based on sessions (e.g. Sessions by device), but data is extracted/migrated based on page views. You can however confirm that percentage breakdown of browser or OS usage does match._
 
