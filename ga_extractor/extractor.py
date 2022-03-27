@@ -132,7 +132,7 @@ def auth():
         typer.echo(f"Authenticated failed with error: '{e}'")
 
 
-# TODO Include params for filters, Sampling if present in config
+# TODO Include params for filters
 @extractor.command()
 def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True)):
     """
@@ -163,7 +163,8 @@ def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True))
                                 "endDate": f"{config['endDate']}"
                             }],
                         "dimensions": [dimensions],
-                        "metrics": [metrics]
+                        "metrics": [metrics],
+                        "samplingLevel": config['samplingLevel']
                     }]}
         rows = []
         with build('analyticsreporting', 'v4', credentials=scoped_credentials) as service:
