@@ -37,13 +37,40 @@ class OutputFormat(str, Enum):
         return format_mapping[f]
 
 
+class Preset(str, Enum):
+    NONE = "NONE"
+    FULL = "FULL"
+    BASIC = "BASIC"
+
+    @staticmethod
+    def metrics(p):
+        metrics_mapping = {
+            Preset.NONE: [],
+            Preset.FULL: ["ga:pageviews", "ga:sessions"],
+            Preset.BASIC: ["ga:pageviews"],
+        }
+        return metrics_mapping[p]
+
+    @staticmethod
+    def dims(p):
+        dims_mapping = {
+            Preset.NONE: [],
+            Preset.FULL: ["ga:pagePath", "ga:browser", "ga:operatingSystem", "ga:deviceCategory", "ga:browserSize",
+                          "ga:language", "ga:country", "ga:fullReferrer"],
+            Preset.BASIC: ["ga:pagePath"],
+        }
+        return dims_mapping[p]
+
+
 @extractor.command()
-def setup(metrics: str = typer.Option(..., "--metrics"),
-          dimensions: str = typer.Option(..., "--dimensions"),
+def setup(metrics: str = typer.Option(None, "--metrics"),
+          dimensions: str = typer.Option(None, "--dimensions"),
           sa_key_path: str = typer.Option(..., "--sa-key-path"),
           table_id: int = typer.Option(..., "--table-id"),
           filters: Optional[str] = typer.Option(None, "--filters"),
           sampling_level: SamplingLevel = typer.Option(SamplingLevel.DEFAULT, "--sampling-level"),
+          preset: Preset = typer.Option(Preset.NONE, "--preset",
+                                        help="Use metrics and dimension preset (can't be specified with '--dimensions' or '--metrics')"),
           start_date: datetime = typer.Option(..., formats=["%Y-%m-%d"]),
           end_date: datetime = typer.Option(..., formats=["%Y-%m-%d"]),
           dry_run: bool = typer.Option(False, "--dry-run", help="Outputs config to terminal instead of config file")):
@@ -51,16 +78,27 @@ def setup(metrics: str = typer.Option(..., "--metrics"),
     Generate configuration file from arguments
     """
 
+    if (
+            (preset is Preset.NONE and dimensions is None and metrics is None) or
+            (dimensions is None and metrics is not None) or (dimensions is not None and metrics is None)
+    ):
+        typer.echo("Dimensions and Metrics or Preset must be specified.")
+        typer.Exit(2)
+
     config = {
         "serviceAccountKeyPath": sa_key_path,
         "table": table_id,
-        "metrics": metrics,
-        "dimensions": dimensions,
+        "metrics": "" if not metrics else metrics.split(","),
+        "dimensions": "" if not dimensions else dimensions.split(","),
         "filters": "" if not filters else filters,
         "samplingLevel": sampling_level.value,
         "startDate": f"{start_date:%Y-%m-%d}",
         "endDate": f"{end_date:%Y-%m-%d}",
     }
+
+    if preset is not Preset.NONE:
+        config["metrics"] = Preset.metrics(preset)
+        config["dimensions"] = Preset.dims(preset)
 
     output = yaml.dump(config)
     if dry_run:
@@ -94,10 +132,7 @@ def auth():
         typer.echo(f"Authenticated failed with error: '{e}'")
 
 
-# TODO include common reports:
-#      Dims:    ga:referralPath, ga:source, ga:medium, ga:browser, ga:operatingSystem, ga:country, ga:language
-#      Metrics: ga:users, ga:sessions, ga:hits, ga:pageviews
-#      Presets: Full (all metrics, all dims for configured range), DailyWalk (same as migrate), Minimal (page views per day)
+# TODO Include params for filters, Sampling if present in config
 @extractor.command()
 def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True)):
     """
@@ -116,8 +151,8 @@ def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True))
         credentials = service_account.Credentials.from_service_account_file(config["serviceAccountKeyPath"])
         scoped_credentials = credentials.with_scopes(['https://www.googleapis.com/auth/analytics.readonly'])
 
-        dimensions = [{"name": d} for d in config['dimensions'].split(",")]
-        metrics = [{"expression": m} for m in config['metrics'].split(",")]
+        dimensions = [{"name": d} for d in config['dimensions']]
+        metrics = [{"expression": m} for m in config['metrics']]
         body = {"reportRequests": [
                     {
                         # "pageSize": 2,
@@ -144,47 +179,6 @@ def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True))
         typer.echo(f"Report written to {output_path.absolute()}")
 
 
-# TODO: Instead of transformation of adhoc exports, transform only exports that fit into particular output type
-@extractor.command()
-def transform(infile: Optional[Path] = typer.Option("report.json", dir_okay=True),
-              outfile: Optional[Path] = typer.Option(""),
-              outformat: OutputFormat = typer.Option(OutputFormat.JSON, "--output-format"),):
-    """
-    Transforms extracted data to other formats (e.g. CSV, SQL)
-    """
-    app_dir = typer.get_app_dir(APP_NAME)
-    input_path: Path = Path(app_dir) / infile  # TODO Allow for absolute path (files outside of config folder)
-    if not input_path.is_file():
-        typer.echo("Input file doesn't exist. Please run 'extract' command first.")
-        typer.Exit(2)
-    stdout = True
-    if outfile:
-        stdout = False
-        output_path: Path = Path(app_dir) / outfile  # TODO Allow for absolute path (files outside of config folder)
-
-    with input_path.open() as infile:
-        # TODO Add missing column names (change in extract first)
-        result = ""
-        if outformat is OutputFormat.csv:
-            # TODO Transform data to CSV matrix
-            report = json.load(infile)
-            for row in report:
-                dims = row["dimensions"]
-                metrics = row["metrics"][0]["values"]
-                typer.echo(f"dims: {dims}, metrics: {metrics}")
-        else:
-            typer.echo(f"Invalid output format: {outformat}")
-            typer.Exit(2)
-
-        if stdout:
-            typer.echo(result)
-        else:
-            with output_path.open(mode="w") as outfile:
-                outfile.write(result)
-                typer.echo(f"Report written to {output_path.absolute()}")
-
-
-# TODO
 @extractor.command()
 def migrate(output_format: OutputFormat = typer.Option(OutputFormat.JSON, "--format"),
             umami_website_id: int = typer.Argument(1, help="Website ID, used if migrating data for Umami Analytics"),
