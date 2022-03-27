@@ -4,6 +4,15 @@ version = "0.1.0"
 description = "Tool for extracting Google Analytics data suitable for migrating to other platforms"
 authors = ["Martin-Heinz1 <martin.heinz1@ibm.com>"]
 license = "MIT"
+keywords = [ "analytics", "google" ]
+repository = "https://github.com/MartinHeinz/ga-extractor"
+classifiers = [
+    "Environment :: Console",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Utilities",
+]
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -25,10 +34,13 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-ga-extractor = "extractor.extractor:extractor"
+ga-extractor = "ga_extractor.extractor:extractor"
 
 [tool.coverage.run]
 source = ['ga_extractor']
 
 [tool.coverage.report]
 show_missing = true
+
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/MartinHeinz/ga-extractor/issues"
