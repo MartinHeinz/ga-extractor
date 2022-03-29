@@ -1,5 +1,7 @@
 # Google Analytics Extractor
 
+A CLI tool for extracting Google Analytics data using Google Reporting API. Can be also used to transform data to various formats suitable for migration to other analytics platforms.
+
 ## Setup
 
 You will need Google Cloud API access for run the CLI:
