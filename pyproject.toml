@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ga-extractor"
-version = "0.1.0"
+version = "0.1.1"
 description = "Tool for extracting Google Analytics data suitable for migrating to other platforms"
 authors = ["Martin-Heinz1 <martin.heinz1@ibm.com>"]
 license = "MIT"
