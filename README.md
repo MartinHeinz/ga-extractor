@@ -4,6 +4,8 @@
 
 A CLI tool for extracting Google Analytics data using Google Reporting API. Can be also used to transform data to various formats suitable for migration to other analytics platforms.
 
+Also see - [Goodbye, Google Analytics - Why and How You Should Leave The Platform](https://martinheinz.dev/blog/71) for more context.
+
 ## Setup
 
 You will need Google Cloud API access for run the CLI:
@@ -24,7 +26,7 @@ You will need Google Cloud API access for run the CLI:
     - email: SA email from earlier
     - role: _Viewer_
   
-Alternatively see <https://martinheinz.dev/blog/62>.
+Alternatively see following [setup](https://martinheinz.dev/blog/62).
 
 To install and run:
 
