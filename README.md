@@ -6,6 +6,12 @@ A CLI tool for extracting Google Analytics data using Google Reporting API. Can 
 
 Also see - [Goodbye, Google Analytics - Why and How You Should Leave The Platform](https://martinheinz.dev/blog/71) for more context.
 
+-----
+
+If you find this useful, you can support me on Ko-Fi (Donations are always appreciated, but never required):
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K3K6F4XN6)
+
 ## Setup
 
 You will need Google Cloud API access for run the CLI:
