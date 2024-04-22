@@ -66,7 +66,7 @@ ga-extractor setup --help  # For options and flags
 ```
 
 - Value for `--table-id` can be found in GA web console - Click on _Admin_ section, _View Settings_ and see _View ID_ field
-- All configurations and generated extracts/reports are stored in `~/.config/ga-extrator/...`
+- All configurations and generated extracts/reports are stored in `~/.config/ga-extractor/...`
 - You can also use metrics and dimensions presets using `--preset` with `FULL` or `BASIC`, if you're not sure which data to extract
 
 ### Extract
