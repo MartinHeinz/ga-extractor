@@ -166,6 +166,8 @@ def extract(report: Optional[Path] = typer.Option("report.json", dir_okay=True))
         rows = []
         with build('analyticsreporting', 'v4', credentials=scoped_credentials) as service:
             response = service.reports().batchGet(body=body).execute()
+            if not "rows" in response.values():
+                raise Exception("There were no rows in the response.")
             rows.extend(response["reports"][0]["data"]["rows"])
 
             while "nextPageToken" in response["reports"][0]:  # Paging...
