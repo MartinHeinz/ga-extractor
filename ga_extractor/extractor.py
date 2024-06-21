@@ -248,8 +248,9 @@ def __migrate_extract(credentials, table_id, date_ranges):
         with build('analyticsreporting', 'v4', credentials=credentials) as service:
             body["reportRequests"][0]["dateRanges"] = [r]
             response = service.reports().batchGet(body=body).execute()
-
-            rows[r["startDate"]] = response["reports"][0]["data"]["rows"]
+            num_rows = response["reports"][0]["data"]["totals"][0]["values"]
+            if len(list(filter(lambda x: x != '0', num_rows))):
+                rows[r["startDate"]] = response["reports"][0]["data"]["rows"]
 
     return rows
 
